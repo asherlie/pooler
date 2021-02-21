@@ -1,11 +1,21 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <pthread.h>
+
+struct func_arg{
+    volatile void* (*func)(void*);
+    void* arg;
+
+    volatile _Bool spool_up;
+    volatile _Bool exit;
+};
 
 /* linked list containing threads
  */
 struct thread_ll{
     pthread_t thread;
+    struct func_arg* f_a;
     struct thread_ll* next;
 };
 
@@ -35,11 +45,45 @@ struct thread_pool{
     struct thread_ll* available, * in_use;
 };
 
+
+void* await_instructions(void* v_f_a){
+    struct func_arg* f_a = v_f_a;
+    /* while(!f_a->func){ */
+    while(!f_a->spool_up){
+        if(f_a->exit)return NULL;
+        usleep(100);
+    }
+    f_a->func(f_a->arg);
+    return NULL;
+}
+
+struct thread{
+    struct func_arg* f_a;
+    pthread_t pth;
+};
+
+struct thread* spawn_thread(){
+    struct thread* ret = malloc(sizeof(struct thread));
+    ret->f_a = malloc(sizeof(struct func_arg));
+    ret->f_a->exit = 0;
+    ret->f_a->spool_up = 0;
+    /*ret->f_a->func =*/ ret->f_a->arg = NULL;
+
+    pthread_t pth;
+
+    ret->pth = pth;
+
+    pthread_create(&ret->pth, NULL, await_instructions, ret->f_a);
+
+    return ret;
+}
+
 void init_pool(struct thread_pool* p, int n_threads){
     p->n_threads = n_threads;
     /* p->available = insert_tll(&); */
     for(int i = 0; i < p->n_threads; ++i){
         pthread_t pth;
+        /* pthread_attr_init(&pth); */
         insert_tll(&p->available, create_tll(pth));
     }
     p->in_use = NULL;
