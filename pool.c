@@ -60,6 +60,7 @@ struct thread_pool{
 
 void* await_instructions(void* v_f_a){
     struct func_arg* f_a = v_f_a;
+    printf("thread %i started up\n", f_a->_id);
     /* while(!f_a->func){ */
     while(!f_a->spool_up){
         if(f_a->exit)return NULL;
@@ -90,18 +91,32 @@ struct thread* spawn_thread(_Bool* success, int id){
 void init_pool(struct thread_pool* p, int n_threads){
     p->n_threads = n_threads;
     /* p->available = insert_tll(&); */
+    p->available = p->in_use = NULL;
     struct thread* th;
     for(int i = 0; i < p->n_threads; ++i){
         /* pthread_attr_init(&pth); */
-        th = spawn_thread(NULL);
+        th = spawn_thread(NULL, i);
 
         insert_tll(&p->available, create_tll(th));
     }
-    p->in_use = NULL;
 }
 
 void spool_up(struct thread_pool* p){
     (void)p;
+}
+
+/* sets exit to 1 for each available thread, pthread_join */
+void destroy_pool(struct thread_pool* p){
+    for(struct thread_ll* tll = p->available; tll; tll = tll->next){
+        tll->thread_info->f_a->exit = 1;
+        pthread_join(tll->thread_info->pth, NULL);
+        printf("closing available thread %i\n", tll->thread_info->f_a->_id);
+    }
+    for(struct thread_ll* tll = p->in_use; tll; tll = tll->next){
+        /* tll->thread_info->f_a->exit = 1; */
+        pthread_join(tll->thread_info->pth, NULL);
+        printf("closing in_use thread %i\n", tll->thread_info->f_a->_id);
+    }
 }
 
 /*
@@ -111,4 +126,5 @@ void spool_up(struct thread_pool* p){
 int main(){
     struct thread_pool p;
     init_pool(&p, 10);
+    destroy_pool(&p);
 }
