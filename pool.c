@@ -4,6 +4,8 @@
 #include <pthread.h>
 
 struct func_arg{
+    int _id;
+
     volatile void* (*func)(void*);
     void* arg;
 
@@ -67,11 +69,12 @@ void* await_instructions(void* v_f_a){
     return NULL;
 }
 
-struct thread* spawn_thread(_Bool* success){
+struct thread* spawn_thread(_Bool* success, int id){
     struct thread* ret = malloc(sizeof(struct thread));
     ret->f_a = malloc(sizeof(struct func_arg));
     ret->f_a->exit = 0;
     ret->f_a->spool_up = 0;
+    ret->f_a->_id = id;
     /*ret->f_a->func =*/ ret->f_a->arg = NULL;
 
     #pragma GCC diagnostic ignored "-Wuninitialized"
@@ -106,4 +109,6 @@ void spool_up(struct thread_pool* p){
  */
 
 int main(){
+    struct thread_pool p;
+    init_pool(&p, 10);
 }
