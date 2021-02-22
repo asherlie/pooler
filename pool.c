@@ -4,6 +4,8 @@
 #include <unistd.h>
 #include <pthread.h>
 
+#define DELAY usleep(1000)
+
 struct func_arg{
     int _id;
 
@@ -165,14 +167,39 @@ void* scheduler(void* v_thread_pool){
                 }
                 p->available = tll;
 
+                printf("thread %i has been made available\n", tll->thread_info->f_a->_id);
+
                 pthread_mutex_unlock(&p->tll_lock);
             }
         }
+        DELAY;
     }
     return NULL;
 }
 
 void* spooler(void* v_thread_pool){
+    struct thread_pool* p = v_thread_pool;
+    struct func_arg* fa;
+    while(1){
+        DELAY;
+        if(!(fa = pop_routine_queue(&p->rq))){
+            DELAY;
+            continue;
+        }
+
+        while(!p->available)DELAY;
+
+        pthread_mutex_lock(&p->tll_lock);
+        /* TODO: i likely need a spool up lock to be used in await_instructions(),
+         * spooler(), and scheduler()
+         */
+        printf("spooling up thread %i\n", p->available->thread_info->f_a->_id);
+        p->available->thread_info->f_a->func = fa->func;
+        p->available->thread_info->f_a->arg = fa->arg;
+        /* hopefully these don't get rearranged - TODO: mutex lock */
+        p->available->thread_info->f_a->spool_up = 1;
+        pthread_mutex_unlock(&p->tll_lock);
+    }
     return NULL;
 }
 
@@ -198,7 +225,7 @@ void* await_instructions(void* v_f_a){
     while(!f_a->exit){
         while(!f_a->spool_up){
             if(f_a->exit)return NULL;
-            usleep(100);
+            DELAY;
         }
         f_a->func(f_a->arg);
         f_a->spool_up = 0;
@@ -238,6 +265,8 @@ void init_pool(struct thread_pool* p, int n_threads){
 
     pthread_mutex_init(&p->tll_lock, NULL);
     init_routine_queue(&p->rq);
+
+    begin_thread_mgmt(p);
 }
 
 /* we have two options - exec_routine() can be blocking, only returning when we have a spot
