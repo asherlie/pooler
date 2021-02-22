@@ -151,6 +151,14 @@ void* scheduler(void* v_thread_pool){
         for(struct thread_ll* tll = p->in_use; tll; tll = tll->next){
             /* thread no longer executing a routine */
             if(!tll->thread_info->f_a->spool_up){
+                tll->prev->next = tll->next;
+                /* what if this is NULL */
+                tll->prev = NULL;
+                if(!p->available)p->available = tll;
+                else{
+                    p->available->prev = tll;
+                    tll->prev = NULL;
+                }
             }
         }
     }
