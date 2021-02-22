@@ -59,8 +59,10 @@ void insert_tll(struct thread_ll** tll, struct thread_ll* node){
  * i need back references to simplify this
  * this function will be used to move a thread from in_use/avail to avail/in_use
  */
-void swap_tll(struct thread_ll* a, struct thread_ll* b){
-}
+/*
+ * void swap_tll(struct thread_ll* a, struct thread_ll* b){
+ * }
+ */
 
 struct routine_queue{
     /* this lock is used to ensure that messages are removed from the queue before */
@@ -118,32 +120,12 @@ if we are just going through our list of threads what use is the structure
 
 honestly i should just use both threads for practice lol
 
-scheduler thread, which finds available threads and immediately pops from routine_queue if possible
+spooler thread, which finds available threads and immediately pops from routine_queue if possible
     then populates thread^s func, arg and moves to in_use
     NOTE: lock on the mutex lock to be sure nothing funky happens
 
-watcher thread, which moves threads with !spool_up to available
+schedule thread, which moves threads with !spool_up to available
 #endif
-
-
-/* waits until the scheduler attempts to join each thread using tryjoin */
-/* the scheduler  */
-void* scheduler(void* v_routine_queue){
-    while(1){
-        
-    }
-}
-
-void* spooler(void* v_routine_queue){
-}
-
-void begin_thread_mgmt(){
-}
-
-void destroy_routine_queue(struct routine_queue* rq){
-    free(rq->base_ptr);
-    pthread_mutex_destroy(&rq->lock);
-}
 
 /* spawns n_threads, each ready to be assigned */
 struct thread_pool{
@@ -161,6 +143,39 @@ struct thread_pool{
 };
 
 
+/* waits until the scheduler attempts to join each thread using tryjoin */
+/* the scheduler  */
+void* scheduler(void* v_thread_pool){
+    struct thread_pool* p = v_thread_pool;
+    while(1){
+        for(struct thread_ll* tll = p->in_use; tll; tll = tll->next){
+            /* thread no longer executing a routine */
+            if(!tll->thread_info->f_a->spool_up){
+            }
+        }
+    }
+    return NULL;
+}
+
+void* spooler(void* v_thread_pool){
+    return NULL;
+}
+
+
+void begin_thread_mgmt(struct thread_pool* p){
+    pthread_t spool, schedule;
+    pthread_create(&spool, NULL, spooler, p);
+    pthread_create(&schedule, NULL, scheduler, p);
+    pthread_detach(spool);
+    pthread_detach(schedule);
+}
+
+void destroy_routine_queue(struct routine_queue* rq){
+    free(rq->base_ptr);
+    pthread_mutex_destroy(&rq->lock);
+}
+
+
 void* await_instructions(void* v_f_a){
     struct func_arg* f_a = v_f_a;
     printf("thread %i started up\n", f_a->_id);
@@ -170,7 +185,8 @@ void* await_instructions(void* v_f_a){
             if(f_a->exit)return NULL;
             usleep(100);
         }
-        f_a->func(f_a->arg); f_a->spool_up = 0;
+        f_a->func(f_a->arg);
+        f_a->spool_up = 0;
     }
     return NULL;
 }
