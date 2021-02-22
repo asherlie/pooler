@@ -131,6 +131,8 @@ schedule thread, which moves threads with !spool_up to available
 struct thread_pool{
     int n_threads;
 
+    pthread_mutex_t tll_lock;
+
     struct thread_ll* available, * in_use;
 
     struct routine_queue rq;
@@ -151,14 +153,19 @@ void* scheduler(void* v_thread_pool){
         for(struct thread_ll* tll = p->in_use; tll; tll = tll->next){
             /* thread no longer executing a routine */
             if(!tll->thread_info->f_a->spool_up){
+                pthread_mutex_lock(&p->tll_lock);
                 tll->prev->next = tll->next;
                 /* what if this is NULL */
                 tll->prev = NULL;
-                if(!p->available)p->available = tll;
-                else{
+                /* if(!p->available)p->available = tll; */
+                if(p->available){
+                    tll->next = p->available;
                     p->available->prev = tll;
                     tll->prev = NULL;
                 }
+                p->available = tll;
+
+                pthread_mutex_unlock(&p->tll_lock);
             }
         }
     }
@@ -229,6 +236,7 @@ void init_pool(struct thread_pool* p, int n_threads){
         insert_tll(&p->available, create_tll(th));
     }
 
+    pthread_mutex_init(&p->tll_lock, NULL);
     init_routine_queue(&p->rq);
 }
 
@@ -252,6 +260,7 @@ void destroy_pool(struct thread_pool* p){
         printf("closing in_use thread %i\n", tll->thread_info->f_a->_id);
     }
     destroy_routine_queue(&p->rq);
+    pthread_mutex_destroy(&p->tll_lock);
 }
 
 /*
