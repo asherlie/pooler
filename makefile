@@ -5,7 +5,10 @@ all: test
 
 pool.o: pool.c pool.h
 test: test.c pool.o
+db: test.c pool.c
+	$(CC) test.c pool.c -DDEBUG -pthread -o db
+	
 
 .PHONY:
 clean:
-	rm -f test *.o
+	rm -f db test *.o
