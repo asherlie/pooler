@@ -68,30 +68,7 @@ void insert_tll(struct thread_ll* tll, struct thread_node* node){
     tll->last->next = node;
     node->prev = tll->last;
     tll->last = node;
-    #if 0
-    /* if(!(*tll))new_node = *tll = malloc(sizeof(struct thread_ll)); */
-    /* if this is the first element */
-    if(!(*tll)){
-        *tll = node;
-        (*tll)->prev = NULL;
-        return;
-    }
-    struct thread_ll* prev_node;
-    for(prev_node = *tll; prev_node->next; prev_node = prev_node->next);
-    prev_node->next = node;
-    node->prev = prev_node;
-    #endif
 }
-
-/* moves a tll node from one tll to another */
-/*
- * i need back references to simplify this
- * this function will be used to move a thread from in_use/avail to avail/in_use
- */
-/*
- * void swap_tll(struct thread_ll* a, struct thread_ll* b){
- * }
- */
 
 struct routine_queue{
     /* this lock is used to ensure that messages are removed from the queue before */
@@ -332,7 +309,7 @@ void destroy_routine_queue(struct routine_queue* rq){
 
 void* await_instructions(void* v_f_a){
     struct func_arg* f_a = v_f_a;
-    printf("thread %i started up\n", f_a->_id);
+    /* printf("thread %i started up\n", f_a->_id); */
     /* while(!f_a->func){ */
     while(!f_a->exit){
         while(!f_a->spool_up){
@@ -400,12 +377,12 @@ void destroy_pool(struct thread_pool* p){
     for(struct thread_node* n = p->available->first; n; n = n->next){
         n->thread_info->f_a->exit = 1;
         pthread_join(n->thread_info->pth, NULL);
-        printf("closing available thread %i\n", n->thread_info->f_a->_id);
+        /* printf("closing available thread %i\n", n->thread_info->f_a->_id); */
     }
     for(struct thread_node* n = p->in_use->first; n; n = n->next){
         n->thread_info->f_a->exit = 1;
         pthread_join(n->thread_info->pth, NULL);
-        printf("closing available thread %i\n", n->thread_info->f_a->_id);
+        /* printf("closing available thread %i\n", n->thread_info->f_a->_id); */
     }
     destroy_routine_queue(&p->rq);
     pthread_mutex_destroy(&p->tll_lock);
@@ -429,7 +406,7 @@ volatile void* test(void* arg){
 
 int main(){
     struct thread_pool p;
-    init_pool(&p, 1000);
+    init_pool(&p, 100);
     for(int i = 0; i < 20; ++i){
         int* arg = malloc(4);
         *arg = i;
