@@ -295,7 +295,7 @@ void* spooler(void* v_thread_pool){
             continue;
         }
 
-        while(!p->available)DELAY;
+        while(!p->available->first)DELAY;
 
         pthread_mutex_lock(&p->tll_lock);
         /* printf("spooling up thread %i\n", p->available->first->thread_info->f_a->_id); */
@@ -423,6 +423,8 @@ void destroy_pool(struct thread_pool* p){
      */
     destroy_routine_queue(&p->rq);
     pthread_mutex_destroy(&p->tll_lock);
+    free(p->available);
+    free(p->in_use);
 }
 
 int exec_routine(struct thread_pool* p, volatile void* (*func)(void*), void* arg){
@@ -440,7 +442,7 @@ volatile void* test(void* arg){
 
 int main(){
     struct thread_pool p;
-    init_pool(&p, 10);
+    init_pool(&p, 1);
     exec_routine(&p, test, NULL);
     exec_routine(&p, test, NULL);
     exec_routine(&p, test, NULL);
