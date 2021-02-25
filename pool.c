@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <signal.h>
 
 #include "pool.h"
 
@@ -196,7 +197,9 @@ void* scheduler(void* v_thread_pool){
                 struct thread_node* new_avail = remove_node(p->in_use, n);
                 new_avail->next = new_avail->prev = NULL;
                 prepend_tll(p->available, new_avail);
-                /* printf("thread %i has been made available\n", new_avail->thread_info->f_a->_id); */
+                #if DEBUG
+                printf("thread %i has been made available\n", new_avail->thread_info->f_a->_id);
+                #endif
                 pthread_mutex_unlock(&p->tll_lock);
             }
         }
@@ -221,7 +224,9 @@ void* spooler(void* v_thread_pool){
         while(!p->available->first)DELAY;
 
         pthread_mutex_lock(&p->tll_lock);
-        /* printf("spooling up thread %i\n", p->available->first->thread_info->f_a->_id); */
+        #if DEBUG
+        printf("spooling up thread %i\n", p->available->first->thread_info->f_a->_id);
+        #endif
         /* struct thread_ll* next_in_use = pop_tll(&p->available); */
         struct thread_node* next_in_use = remove_node(p->available, p->available->first);
         next_in_use->next = next_in_use->prev = NULL;
@@ -255,7 +260,9 @@ void destroy_routine_queue(struct routine_queue* rq){
 
 void* await_instructions(void* v_f_a){
     struct func_arg* f_a = v_f_a;
-    /* printf("thread %i started up\n", f_a->_id); */
+    #if DEBUG
+    printf("thread %i started up\n", f_a->_id);
+    #endif
     /* while(!f_a->func){ */
     while(!f_a->exit){
         while(!f_a->spool_up){
@@ -323,12 +330,16 @@ void destroy_pool(struct thread_pool* p){
     for(struct thread_node* n = p->available->first; n; n = n->next){
         n->thread_info->f_a->exit = 1;
         pthread_join(n->thread_info->pth, NULL);
-        /* printf("closing available thread %i\n", n->thread_info->f_a->_id); */
+        #if DEBUG
+        printf("closing available thread %i\n", n->thread_info->f_a->_id);
+        #endif
     }
     for(struct thread_node* n = p->in_use->first; n; n = n->next){
         n->thread_info->f_a->exit = 1;
         pthread_join(n->thread_info->pth, NULL);
-        /* printf("closing available thread %i\n", n->thread_info->f_a->_id); */
+        #if DEBUG
+        printf("closing available thread %i\n", n->thread_info->f_a->_id);
+        #endif
     }
     destroy_routine_queue(&p->rq);
     pthread_mutex_destroy(&p->tll_lock);
@@ -341,12 +352,19 @@ int exec_routine(struct thread_pool* p, volatile void* (*func)(void*), void* arg
 }
 
 /* these three functions operate on the global POOL in order to simplify the usage of this library */
-void start_pool(int n_threads){
-    init_pool(&POOL, n_threads);
-}
-
 void end_pool(){
     destroy_pool(&POOL);
+}
+
+void safe_exit(int sig){
+    (void)sig;
+    end_pool(); 
+    exit(0);
+}
+
+void start_pool(int n_threads){
+    signal(SIGINT, safe_exit);
+    init_pool(&POOL, n_threads);
 }
 
 void exec_pool(volatile void* (*func)(void*), void* arg){
