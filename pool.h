@@ -1,3 +1,8 @@
+#include <unistd.h>
+
+#define DELAY usleep(1000)
+
+extern struct thread_pool POOL;
 struct func_arg{
     int _id;
 
@@ -54,3 +59,11 @@ struct thread_pool{
     #endif
 };
 
+void init_pool(struct thread_pool* p, int n_threads);
+void destroy_pool(struct thread_pool* p);
+int exec_routine(struct thread_pool* p, volatile void* (*func)(void*), void* arg);
+
+/* these three functions operate on the global POOL in order to simplify the usage of this library */
+void start_pool(int n_threads);
+void end_pool();
+void exec_pool(volatile void* (*func)(void*), void* arg);

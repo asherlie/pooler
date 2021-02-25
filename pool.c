@@ -6,7 +6,7 @@
 
 #include "pool.h"
 
-#define DELAY usleep(1000)
+/*extern*/ struct thread_pool POOL;
 
 /*
  * oops - this creates a node - misnamed
@@ -340,24 +340,15 @@ int exec_routine(struct thread_pool* p, volatile void* (*func)(void*), void* arg
     return insert_routine_queue(&p->rq, func, arg);
 }
 
-volatile void* test(void* arg){
-    int x;
-    memcpy(&x, arg, sizeof(int));
-    printf("test func %i\n", x);
-    return NULL;
+/* these three functions operate on the global POOL in order to simplify the usage of this library */
+void start_pool(int n_threads){
+    init_pool(&POOL, n_threads);
 }
-/*
- * maybe create a global variable and INIT_POOL()
- */
 
-int main(){
-    struct thread_pool p;
-    init_pool(&p, 100);
-    for(int i = 0; i < 20; ++i){
-        int* arg = malloc(4);
-        *arg = i;
-        exec_routine(&p, test, arg);
-    }
-    while(getc(stdin) != 'q')DELAY;
-    destroy_pool(&p);
+void end_pool(){
+    destroy_pool(&POOL);
+}
+
+void exec_pool(volatile void* (*func)(void*), void* arg){
+    exec_routine(&POOL, func, arg);
 }
