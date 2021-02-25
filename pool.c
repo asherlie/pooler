@@ -407,20 +407,6 @@ void destroy_pool(struct thread_pool* p){
         pthread_join(n->thread_info->pth, NULL);
         printf("closing available thread %i\n", n->thread_info->f_a->_id);
     }
-    /*
-     * for(struct thread_ll* tll = p->available; tll; tll = tll->next){
-     *     tll->thread_info->f_a->exit = 1;
-     *     pthread_join(tll->thread_info->pth, NULL);
-     *     printf("closing available thread %i\n", tll->thread_info->f_a->_id);
-     * }
-     */
-    /*
-     * for(struct thread_ll* tll = p->in_use; tll; tll = tll->next){
-     *     [> tll->thread_info->f_a->exit = 1; <]
-     *     pthread_join(tll->thread_info->pth, NULL);
-     *     printf("closing in_use thread %i\n", tll->thread_info->f_a->_id);
-     * }
-     */
     destroy_routine_queue(&p->rq);
     pthread_mutex_destroy(&p->tll_lock);
     free(p->available);
@@ -432,8 +418,9 @@ int exec_routine(struct thread_pool* p, volatile void* (*func)(void*), void* arg
 }
 
 volatile void* test(void* arg){
-    (void)arg;
-    puts("this is from test func");
+    int x;
+    memcpy(&x, arg, sizeof(int));
+    printf("test func %i\n", x);
     return NULL;
 }
 /*
@@ -442,13 +429,12 @@ volatile void* test(void* arg){
 
 int main(){
     struct thread_pool p;
-    init_pool(&p, 1);
-    exec_routine(&p, test, NULL);
-    exec_routine(&p, test, NULL);
-    exec_routine(&p, test, NULL);
-    exec_routine(&p, test, NULL);
-    exec_routine(&p, test, NULL);
-    exec_routine(&p, test, NULL);
+    init_pool(&p, 1000);
+    for(int i = 0; i < 20; ++i){
+        int* arg = malloc(4);
+        *arg = i;
+        exec_routine(&p, test, arg);
+    }
     while(getc(stdin) != 'q')DELAY;
     destroy_pool(&p);
 }
