@@ -22,27 +22,53 @@ struct thread{
 };
 
 
+struct thread_node{
+    struct thread* thread_info;
+    struct thread_node* next, * prev;
+};
 /* linked list containing threads
  */
 struct thread_ll{
-    struct thread* thread_info;
+    /* struct thread* thread_info; */
+    int n_threads;
+    struct thread_node* first, * last;
     /*
      * pthread_t thread;
      * struct func_arg* f_a;
      */
-    struct thread_ll* next, * prev;
+    /* struct thread_ll* next, * prev; */
 };
 
-struct thread_ll* create_tll(struct thread* th){
-    struct thread_ll* ret = malloc(sizeof(struct thread_ll));
+/*
+ * oops - this creates a node - misnamed
+ * given 
+ */
+/* struct thread_ll* create_tll(struct thread* th){ */
+struct thread_node* create_tn(struct thread* th){
+    /* struct thread_ll* ret = malloc(sizeof(struct thread_ll)); */
+    struct thread_node* ret = malloc(sizeof(struct thread_node));
+    /* ret->thread_info = th; */
+    ret->next = ret->prev = NULL;
     ret->thread_info = th;
+    /* ret->n_threads = 0; */
     /* ret->thread = pth; */
     return ret;
 }
 
 /* inserts node into list *tll */
-void insert_tll(struct thread_ll** tll, struct thread_ll* node){
+/* void insert_tll(struct thread_ll* tll, struct thread_ll* node){ */
+void insert_tll(struct thread_ll* tll, struct thread_node* node){
     node->next = NULL;
+    ++tll->n_threads;
+    if(!tll->first){
+        node->prev = NULL;
+        tll->last = tll->first = node;
+        return;
+    }
+    tll->last->next = node;
+    node->prev = tll->last;
+    tll->last = node;
+    #if 0
     /* if(!(*tll))new_node = *tll = malloc(sizeof(struct thread_ll)); */
     /* if this is the first element */
     if(!(*tll)){
@@ -54,6 +80,7 @@ void insert_tll(struct thread_ll** tll, struct thread_ll* node){
     for(prev_node = *tll; prev_node->next; prev_node = prev_node->next);
     prev_node->next = node;
     node->prev = prev_node;
+    #endif
 }
 
 /* moves a tll node from one tll to another */
@@ -80,7 +107,7 @@ void init_routine_queue(struct routine_queue* rq){
     rq->base_ptr = rq->fa = malloc(sizeof(struct func_arg)*rq->cap);
 }
 
-void insert_routine_queue(struct routine_queue* rq, volatile void* (*func)(void*), void* arg){
+int insert_routine_queue(struct routine_queue* rq, volatile void* (*func)(void*), void* arg){
     pthread_mutex_lock(&rq->lock);
     if(rq->n_requests == rq->cap){
         rq->cap *= 2;
@@ -93,7 +120,9 @@ void insert_routine_queue(struct routine_queue* rq, volatile void* (*func)(void*
     }
     rq->fa[rq->n_requests].func = func;
     rq->fa[rq->n_requests++].arg = arg;
+    int ret = rq->n_requests;
     pthread_mutex_unlock(&rq->lock);
+    return ret;
 }
 
 struct func_arg* pop_routine_queue(struct routine_queue* rq){
@@ -146,38 +175,178 @@ struct thread_pool{
     #endif
 };
 
+void print_tll(struct thread_ll* tll){
+    for(struct thread_node* n = tll->first; n; n = n->next){
+        printf("  %i\n", n->thread_info->f_a->_id);
+    }
+}
 
+void print_threads(struct thread_pool* p){
+    puts("available:");
+    print_tll(p->available);
+    puts("in_use:");
+    print_tll(p->in_use);
+}
+
+/* struct thread_ll* pop_tll(struct thread_ll** t){ */
+struct thread_node* remove_node(struct thread_ll* t, struct thread_node* n){
+    if(n == t->first){
+        t->first = n->next;
+        if(t->first)t->first->prev = NULL;
+        --t->n_threads;
+        return n;
+    }
+    if(n == t->last){
+        t->last = n->prev;
+        n->prev->next = NULL;
+        --t->n_threads;
+        return n;
+    }
+    /* internal node */
+    n->prev->next = n->next;
+    n->next->prev = n->prev;
+
+    --t->n_threads;
+    return n;
+}
+struct thread_node* pop_tll(struct thread_ll* t){
+    struct thread_node* n = t->first;
+    if(n){
+        /* updating tll pointer */
+        t->first = n->next;
+
+        /* all n's pointers should be NULL to prepare
+         * for entry in a new tll
+         */
+        n->next = n->prev = NULL;
+        --t->n_threads;
+    }
+    return n;
+
+    #if 0
+    if((*t)->prev)(*t)->prev = (*t)->next;
+    if((*t)->next)(*t)->next->prev = (*t)->prev;
+    struct thread_ll* ret = *t;
+    /* if this is the base pointer */
+    if(!(*t)->prev){
+        if(!(*t)->next)*t = NULL;
+        else *t = (*t)->next;
+    }
+    /* if(!(*t)->prev && !(*t)->next)*t = NULL; */
+    ret->prev = ret->next = NULL;
+    return ret;
+    /* struct thread_ll* ret = p->; */
+    #endif
+}
+
+void prepend_tll(struct thread_ll* target, struct thread_node* n){
+    /* n->prev, n->next == NULL */
+    if(!target->first){
+        target->first = target->last = n;
+        return;
+    }
+    target->last->next = n;
+    n->prev = target->last;
+    target->last = n;
+    target->last->next = NULL;
+    /* target- */
+    #if 0
+    if(*target){
+        (*target)->prev = t;
+        t->next = *target;
+    }
+    *target = t;
+    #endif
+}
+
+void* scheduler(void* v_thread_pool){
+    struct thread_pool* p = v_thread_pool;
+    
+    while(1){
+        puts("before sched:");
+        print_threads(p);
+        for(struct thread_node* n = p->in_use->first; n; n = n->next){
+            if(!n->thread_info->f_a->spool_up){
+                pthread_mutex_lock(&p->tll_lock);
+                struct thread_node* new_avail = remove_node(p->in_use, n);
+                new_avail->next = new_avail->prev = NULL;
+                prepend_tll(p->available, new_avail);
+                pthread_mutex_unlock(&p->tll_lock);
+            }
+        }
+        DELAY;
+        puts("after sched:");
+        print_threads(p);
+    }
+
+    #if 0
+    while(1){
+        for(struct thread_ll* tll = p->in_use; tll; tll = tll->next){
+            if(!tll->thread_info->f_a->spool_up){
+                pthread_mutex_lock(&p->tll_lock);
+                struct thread_ll* new_available = pop_tll(&tll);
+                prepend_tll(&p->available, new_available);
+                printf("thread %i has been made available\n", new_available->thread_info->f_a->_id); pthread_mutex_unlock(&p->tll_lock);
+                tll = p->in_use;
+            }
+        }
+        DELAY;
+        usleep(1000000);
+        puts("scheduler called");
+        print_threads(p);
+    }
+    #endif
+}
+
+#if 0
 /* waits until the scheduler attempts to join each thread using tryjoin */
 /* the scheduler  */
-void* scheduler(void* v_thread_pool){
+void* cheduler(void* v_thread_pool){
     struct thread_pool* p = v_thread_pool;
     while(1){
         for(struct thread_ll* tll = p->in_use; tll; tll = tll->next){
             /* thread no longer executing a routine */
             if(!tll->thread_info->f_a->spool_up){
                 pthread_mutex_lock(&p->tll_lock);
-                tll->prev->next = tll->next;
+                /* printf("%i %i\n", (_Bool)tll->prev, (_Bool)tll->next); */
+                /*
+                 * [0, 1, 2]
+                 * 0 next = 2
+                 */
+                /* removing thread from in_use */
+                if(tll->prev){
+                    tll->prev->next = tll->next;
+                    /* if(tll->next)tll->next->prev = tll->prev; */
+                }
+                if(tll->next)tll->next->prev = tll->prev;
+                /* else p->in_use = NULL; */
                 /* what if this is NULL */
                 tll->prev = NULL;
                 /* if(!p->available)p->available = tll; */
+                tll->next = p->available;
                 if(p->available){
-                    tll->next = p->available;
+                    /* tll->next = p->available; */
                     p->available->prev = tll;
-                    tll->prev = NULL;
+                    /* tll->prev = NULL; */
                 }
+                /* prob is probably in this line and the 3 above */
                 p->available = tll;
 
                 printf("thread %i has been made available\n", tll->thread_info->f_a->_id);
 
+                tll = p->in_use;
                 pthread_mutex_unlock(&p->tll_lock);
             }
+            /* print_threads(p);//  - prints all zeroes - creating some sort of loop here */
         }
         DELAY;
     }
     return NULL;
 }
+#endif
 
-void* spooler(void* v_thread_pool){
+#if 0
+void* pooler(void* v_thread_pool){
     struct thread_pool* p = v_thread_pool;
     struct func_arg* fa;
     while(1){
@@ -194,13 +363,83 @@ void* spooler(void* v_thread_pool){
          * spooler(), and scheduler()
          */
         printf("spooling up thread %i\n", p->available->thread_info->f_a->_id);
+
+        struct thread_ll* th = p->available;
+
+        /* already true */
+        th->prev = NULL;
+
+        /* updating available list */
+        p->available = p->available->next;
+        /*if(p->available->prev)*/p->available->prev = NULL;
+
+        if(!p->in_use){
+            p->in_use = th;
+            th->next = NULL;
+            /* p->in_use->next = NULL; */
+        }
+        else{
+            p->in_use->prev = th;
+            th->next = p->in_use;
+            p->in_use = th;
+            
+/*
+ * 
+ *             th->next = p->in_use->next;
+ *             th->next->prev = th;
+ *             p->in_use = th;
+ */
+        }
+
+        #if !1
         p->available->thread_info->f_a->func = fa->func;
         p->available->thread_info->f_a->arg = fa->arg;
         /* hopefully these don't get rearranged - TODO: mutex lock */
         p->available->thread_info->f_a->spool_up = 1;
+
+        /* moving p->available to in_use */
+        p->in_use->prev = p->available;
+        p->available->next = p->in_use;
+        p->available->prev = NULL;
+
+        p->available = p->available->next;
+        #endif
+
+        th->thread_info->f_a->func = fa->func;
+        th->thread_info->f_a->arg = fa->arg;
+        th->thread_info->f_a->spool_up = 1;
+
         pthread_mutex_unlock(&p->tll_lock);
     }
     return NULL;
+}
+#endif
+
+void* spooler(void* v_thread_pool){
+    struct thread_pool* p = v_thread_pool;
+    struct func_arg* fa;
+    while(1){
+        DELAY;
+        if(!(fa = pop_routine_queue(&p->rq))){
+            DELAY;
+            continue;
+        }
+
+        while(!p->available)DELAY;
+
+        pthread_mutex_lock(&p->tll_lock);
+        /* struct thread_ll* next_in_use = pop_tll(&p->available); */
+        struct thread_node* next_in_use = remove_node(p->available, p->available->first);
+        next_in_use->next = next_in_use->prev = NULL;
+        prepend_tll(p->in_use, next_in_use);
+        next_in_use->thread_info->f_a->arg = fa->arg;
+        next_in_use->thread_info->f_a->func = fa->func;
+        next_in_use->thread_info->f_a->spool_up = 1;
+        pthread_mutex_unlock(&p->tll_lock);
+        usleep(1000000);
+        puts("spooler called");
+        print_threads(p);
+    }
 }
 
 
@@ -241,26 +480,40 @@ struct thread* spawn_thread(_Bool* success, int id){
     ret->f_a->_id = id;
     /*ret->f_a->func =*/ ret->f_a->arg = NULL;
 
+    #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wuninitialized"
     pthread_t pth;
 
     ret->pth = pth;
+    #pragma GCC diagnostic pop
     _Bool failure = pthread_create(&ret->pth, NULL, await_instructions, ret->f_a);
     if(success)*success = !failure;
 
     return ret;
 }
 
+void init_tll(struct thread_ll* tll){
+    tll->n_threads = 0;
+    tll->first = tll->last = NULL;
+}
+
 void init_pool(struct thread_pool* p, int n_threads){
     p->n_threads = n_threads;
     /* p->available = insert_tll(&); */
-    p->available = p->in_use = NULL;
+    p->available = malloc(sizeof(struct thread_ll));
+    p->in_use = malloc(sizeof(struct thread_ll));
+
+    init_tll(p->available);
+    init_tll(p->in_use);
+
+    /* p->in_use = NULL; */
     struct thread* th;
     for(int i = 0; i < p->n_threads; ++i){
         /* pthread_attr_init(&pth); */
         th = spawn_thread(NULL, i);
 
-        insert_tll(&p->available, create_tll(th));
+        /* insert_tll(&p->available, create_tll(th)); */
+        insert_tll(p->available, create_tn(th));
     }
 
     pthread_mutex_init(&p->tll_lock, NULL);
@@ -269,35 +522,55 @@ void init_pool(struct thread_pool* p, int n_threads){
     begin_thread_mgmt(p);
 }
 
-/* we have two options - exec_routine() can be blocking, only returning when we have a spot
- * or we can have exec_routine() submit a exec request that is guaranteed to begin when a spot
- * is available
- */
-void exec_routine(){
-}
-
 /* sets exit to 1 for each available thread, pthread_join */
 void destroy_pool(struct thread_pool* p){
-    for(struct thread_ll* tll = p->available; tll; tll = tll->next){
-        tll->thread_info->f_a->exit = 1;
-        pthread_join(tll->thread_info->pth, NULL);
-        printf("closing available thread %i\n", tll->thread_info->f_a->_id);
+    for(struct thread_node* n = p->available->first; n; n = n->next){
+        n->thread_info->f_a->exit = 1;
+        pthread_join(n->thread_info->pth, NULL);
+        printf("closing available thread %i\n", n->thread_info->f_a->_id);
     }
-    for(struct thread_ll* tll = p->in_use; tll; tll = tll->next){
-        /* tll->thread_info->f_a->exit = 1; */
-        pthread_join(tll->thread_info->pth, NULL);
-        printf("closing in_use thread %i\n", tll->thread_info->f_a->_id);
+    for(struct thread_node* n = p->in_use->first; n; n = n->next){
+        n->thread_info->f_a->exit = 1;
+        pthread_join(n->thread_info->pth, NULL);
+        printf("closing available thread %i\n", n->thread_info->f_a->_id);
     }
+    /*
+     * for(struct thread_ll* tll = p->available; tll; tll = tll->next){
+     *     tll->thread_info->f_a->exit = 1;
+     *     pthread_join(tll->thread_info->pth, NULL);
+     *     printf("closing available thread %i\n", tll->thread_info->f_a->_id);
+     * }
+     */
+    /*
+     * for(struct thread_ll* tll = p->in_use; tll; tll = tll->next){
+     *     [> tll->thread_info->f_a->exit = 1; <]
+     *     pthread_join(tll->thread_info->pth, NULL);
+     *     printf("closing in_use thread %i\n", tll->thread_info->f_a->_id);
+     * }
+     */
     destroy_routine_queue(&p->rq);
     pthread_mutex_destroy(&p->tll_lock);
 }
 
+int exec_routine(struct thread_pool* p, volatile void* (*func)(void*), void* arg){
+    return insert_routine_queue(&p->rq, func, arg);
+}
+
+volatile void* test(void* arg){
+    (void)arg;
+    puts("this is from test func");
+    return NULL;
+}
 /*
  * maybe create a global variable and INIT_POOL()
  */
 
 int main(){
+    int x;
+    printf("%i\n", x);
     struct thread_pool p;
     init_pool(&p, 10);
+    exec_routine(&p, test, NULL);
+    while(getc(stdin) != 'q')DELAY;
     destroy_pool(&p);
 }
