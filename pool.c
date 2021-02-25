@@ -263,8 +263,10 @@ void* scheduler(void* v_thread_pool){
     struct thread_pool* p = v_thread_pool;
     
     while(1){
-        puts("before sched:");
-        print_threads(p);
+        /*
+         * puts("before sched:");
+         * print_threads(p);
+         */
         for(struct thread_node* n = p->in_use->first; n; n = n->next){
             if(!n->thread_info->f_a->spool_up){
                 pthread_mutex_lock(&p->tll_lock);
@@ -275,8 +277,10 @@ void* scheduler(void* v_thread_pool){
             }
         }
         DELAY;
-        puts("after sched:");
-        print_threads(p);
+        /*
+         * puts("after sched:");
+         * print_threads(p);
+         */
     }
 
     #if 0
@@ -436,9 +440,11 @@ void* spooler(void* v_thread_pool){
         next_in_use->thread_info->f_a->func = fa->func;
         next_in_use->thread_info->f_a->spool_up = 1;
         pthread_mutex_unlock(&p->tll_lock);
-        usleep(1000000);
-        puts("spooler called");
-        print_threads(p);
+        /*
+         * usleep(1000000);
+         * puts("spooler called");
+         * print_threads(p);
+         */
     }
 }
 
@@ -566,8 +572,6 @@ volatile void* test(void* arg){
  */
 
 int main(){
-    int x;
-    printf("%i\n", x);
     struct thread_pool p;
     init_pool(&p, 10);
     exec_routine(&p, test, NULL);
