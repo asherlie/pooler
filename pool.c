@@ -78,6 +78,13 @@ struct func_arg* pop_routine_queue(struct routine_queue* rq){
     return ret;
 }
 
+_Bool is_complete(struct routine_queue* rq){
+    pthread_mutex_lock(&rq->lock);
+    _Bool ret = rq->n_requests;
+    pthread_mutex_unlock(&rq->lock);
+    return ret;
+}
+
 #if !1
 we need to move completed tasks into the available thread_ll
 we need to select threads from the available thread_ll for each item in the queue
