@@ -45,6 +45,31 @@ void init_routine_queue(struct routine_queue* rq){
     rq->cap = 200;
     rq->n_requests = 0;
     rq->base_ptr = rq->fa = malloc(sizeof(struct func_arg)*rq->cap);
+    rq->target = -1;
+}
+
+void set_await_target(struct thread_pool* tp, int target){
+    pthread_mutex_lock(&tp->rt->lock);
+
+    /* prepping ready lock */
+    pthread_mutex_lock(&tp->rt->ready_lock);
+
+    tp->rt->n_finished = 0;
+    tp->rt->target = target;
+
+    pthread_mutex_unlock(&tp->rt->lock);
+    /*lock lock*/
+    /*
+     * set target = target
+     * pthread_mutex_t;
+     * pthread_cond_wait();
+    */
+    /*unlock lock*/
+    /*pthread_mutex_lock(&tp->rt->ready_lock);*/
+}
+
+void await(struct thread_pool* tp){
+    pthread_mutex_lock(&tp->rt->ready_lock);
 }
 
 int insert_routine_queue(struct routine_queue* rq, volatile void* (*func)(void*), void* arg){
@@ -74,6 +99,7 @@ struct func_arg* pop_routine_queue(struct routine_queue* rq){
         --rq->n_requests;
         --rq->cap;
     }
+    /*if(ret)printf("n_requests: %i\n", rq->n_requests);*/
     pthread_mutex_unlock(&rq->lock);
     return ret;
 }
@@ -228,6 +254,11 @@ void* spooler(void* v_thread_pool){
             continue;
         }
 
+        /* TODO: use a pthread_cond */
+        /*
+         * could jus try to acquire a lock that's unlocked
+         * when a thread is made available after not being
+        */
         while(!p->available->first)DELAY;
 
         pthread_mutex_lock(&p->tll_lock);
@@ -241,6 +272,9 @@ void* spooler(void* v_thread_pool){
         next_in_use->thread_info->f_a->arg = fa->arg;
         next_in_use->thread_info->f_a->func = fa->func;
         next_in_use->thread_info->f_a->spool_up = 1;
+
+        next_in_use->thread_info->f_a->rt = p->rt;
+
         pthread_mutex_unlock(&p->tll_lock);
         /*
          * usleep(1000000);
@@ -278,7 +312,28 @@ void* await_instructions(void* v_f_a){
         }
         f_a->func(f_a->arg);
         f_a->spool_up = 0;
+        
+        pthread_mutex_lock(&f_a->rt->lock);
+        /*++f_a->rt->n_finished;*/
+        /*printf("n_fin: %i\n", f_a->rt->n_finished+1);*/
+        if(++f_a->rt->n_finished == f_a->rt->target){
+            /* resetting target, in case of more await_target()
+             * calls
+             */
+            f_a->rt->target = -1;
+            pthread_mutex_unlock(&f_a->rt->ready_lock);
+        }
+        pthread_mutex_unlock(&f_a->rt->lock);
     }
+    /*
+     * add a new mutex lock to 
+     * use it to increment and check routines_returned
+     * we can use the new await_target to set a routine counter
+     * and increment a separate counter to keep track of routines
+     * returned
+     * if routines returned == n_routines
+     * unlock
+    */
     return NULL;
 }
 
@@ -289,6 +344,16 @@ struct thread* spawn_thread(_Bool* success, int id){
     ret->f_a->spool_up = 0;
     ret->f_a->_id = id;
     /*ret->f_a->func =*/ ret->f_a->arg = NULL;
+/*
+ *     working now to get one signel int shared between all func_arg threads
+ * 
+ *     could just use an ugly global
+ *     could pass an int* to each func_arg
+ *     hmm
+ *     global might be most elegant weirdly
+*/
+
+    /*ret->f_a->n_returns = 0;*/
 
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wuninitialized"
@@ -328,6 +393,15 @@ void init_pool(struct thread_pool* p, int n_threads){
 
     pthread_mutex_init(&p->tll_lock, NULL);
     init_routine_queue(&p->rq);
+
+    /* set up routine tracker */
+    p->rt = malloc(sizeof(struct routine_tracker));
+    p->rt->n_finished = 0;
+    p->rt->target = -1;
+    pthread_mutex_init(&p->rt->lock, NULL);
+    pthread_mutex_init(&p->rt->ready_lock, NULL);
+    /* acquiring ready_lock */
+    /*pthread_mutex_lock(&p->rt->ready_lock);*/
 
     begin_thread_mgmt(p);
 }
