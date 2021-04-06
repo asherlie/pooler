@@ -67,3 +67,5 @@ int exec_routine(struct thread_pool* p, volatile void* (*func)(void*), void* arg
 void start_pool(int n_threads);
 void end_pool();
 void exec_pool(volatile void* (*func)(void*), void* arg);
+
+_Bool is_complete(struct thread_pool* tp);
