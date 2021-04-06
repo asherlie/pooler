@@ -3,7 +3,23 @@
 #define DELAY usleep(100)
 
 extern struct thread_pool POOL;
+
+/* the same instance of this struct is shared between
+ * all func_args
+ * this struct helps keep track of the number of finished
+ * routines
+ * and can be used in conjunction with await_target()
+ * to wait until all jobs are finished
+ */
+struct routine_tracker{
+    int n_finished, target;
+    pthread_mutex_t lock,
+
+    ready_lock;
+};
+
 struct func_arg{
+    struct routine_tracker* rt;
     int _id;
 
     volatile void* (*func)(void*);
@@ -40,10 +56,12 @@ struct routine_queue{
     /* this lock is used to ensure that messages are removed from the queue before */
     pthread_mutex_t lock;
     struct func_arg* fa, * base_ptr;
-    int n_requests, cap;
+    int n_requests, cap, target;
 };
 
 struct thread_pool{
+    struct routine_tracker* rt;
+
     int n_threads;
 
     pthread_mutex_t tll_lock;
@@ -69,3 +87,5 @@ void end_pool();
 void exec_pool(volatile void* (*func)(void*), void* arg);
 
 _Bool is_complete(struct thread_pool* tp);
+void set_await_target(struct thread_pool* tp, int target);
+void await(struct thread_pool* tp);
