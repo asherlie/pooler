@@ -1,6 +1,6 @@
 #include <unistd.h>
 
-#define DELAY usleep(1000)
+#define DELAY usleep(100)
 
 extern struct thread_pool POOL;
 struct func_arg{
