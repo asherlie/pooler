@@ -216,14 +216,25 @@ void prepend_tll(struct thread_ll* target, struct thread_node* n){
     #endif
 }
 
+/* scheduler isn't strictly needed
+ * the spooler can simply acquire the spool_down_lock
+ * continuously
+ */
 void* scheduler(void* v_thread_pool){
     struct thread_pool* p = v_thread_pool;
     
     while(1){
         /*
-         * puts("before sched:");
-         * print_threads(p);
-         */
+         * instead of this nonsense, we can acquire the spool_down_lock, which will
+         * only be available when there are spooled down threads in the in_use list
+         *
+         * rather, it would make sense to get rid of the external while loop while
+         * maintaining this loop
+         *
+         * this would also allow us to acquire the tll_lock before the for loop
+         * since we're certain that there exists a free thread before entering
+         * the loop
+        */
         for(struct thread_node* n = p->in_use->first; n; n = n->next){
             if(!n->thread_info->f_a->spool_up){
                 pthread_mutex_lock(&p->tll_lock);
@@ -248,6 +259,13 @@ void* spooler(void* v_thread_pool){
     struct thread_pool* p = v_thread_pool;
     struct func_arg* fa;
     while(1){
+        /*
+         * every use of DELAY can possibly be removed in favor
+         * of pthreaed mutex
+         * in this case, we can attempt to acquire a lock
+         * that is open unless routine queue is empty
+         * will be locked/unlocked by exec_*
+        */
         DELAY;
         if(!(fa = pop_routine_queue(&p->rq))){
             DELAY;
@@ -256,8 +274,16 @@ void* spooler(void* v_thread_pool){
 
         /* TODO: use a pthread_cond */
         /*
-         * could jus try to acquire a lock that's unlocked
+         * could just try to acquire a lock that's unlocked
          * when a thread is made available after not being
+         *
+         * thread_avail_lock
+         * when a thread is spooling down it'll possibly unlock nomatter what
+         * if it's not UB to unlock an already unlocked lock
+         *
+         *
+         * OOOOR the scheduler thread can unlock the thread_avail_lock when a thread
+         * becomes available after not being
         */
         while(!p->available->first)DELAY;
 
@@ -312,6 +338,12 @@ void* await_instructions(void* v_f_a){
         }
         f_a->func(f_a->arg);
         f_a->spool_up = 0;
+
+        /*
+         * possibly unlock a lock that lets the scheduler know
+         * a new thread is done running
+        */
+        pthread_mutex_unlock(&f_a->rt->spool_down_lock);
         
         pthread_mutex_lock(&f_a->rt->lock);
         /*++f_a->rt->n_finished;*/
@@ -400,6 +432,7 @@ void init_pool(struct thread_pool* p, int n_threads){
     p->rt->target = -1;
     pthread_mutex_init(&p->rt->lock, NULL);
     pthread_mutex_init(&p->rt->ready_lock, NULL);
+    pthread_mutex_init(&p->rt->spool_down_lock, NULL);
     /* acquiring ready_lock */
     /*pthread_mutex_lock(&p->rt->ready_lock);*/
 

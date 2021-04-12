@@ -15,7 +15,9 @@ struct routine_tracker{
     int n_finished, target;
     pthread_mutex_t lock,
 
-    ready_lock;
+    ready_lock,
+
+    spool_down_lock;
 };
 
 struct func_arg{
