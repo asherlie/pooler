@@ -270,11 +270,23 @@ void* scheduler(void* v_thread_pool){
         /* this will not be free until a routine is done executing in await_instructions() */
         pthread_mutex_lock(&p->rt->spool_down_lock);
         
+        /* if one thread is ready, then it's a fair assumption that more will soon be ready */
+        // TODO: investigate
+        // usleep(10000);
+
         /* we first acquire the tll lock to ensure that we're ok to alter our thread lists */
         pthread_mutex_lock(&p->tll_lock);
 
         int n_avail = 0;
         for(struct thread_node* n = p->in_use->first; n; n = n->next){
+
+        /*
+         * something in here is making n->next == NULL
+         * need to 
+         *     figure out this n->next == NULL nonce
+         *     git checkout to before i updated pthread logic
+        */
+
             if(!n->thread_info->f_a->spool_up){
                 ++n_avail;
                 struct thread_node* new_avail = remove_node(p->in_use, n);
