@@ -220,7 +220,7 @@ void prepend_tll(struct thread_ll* target, struct thread_node* n){
  * the spooler can simply acquire the spool_down_lock
  * continuously
  */
-void* scheduler(void* v_thread_pool){
+void* scheduler_deprecated(void* v_thread_pool){
     struct thread_pool* p = v_thread_pool;
     
     while(1){
@@ -253,6 +253,49 @@ void* scheduler(void* v_thread_pool){
          * print_threads(p);
          */
     }
+}
+
+void* scheduler(void* v_thread_pool){
+    struct thread_pool* p = v_thread_pool;
+    
+/*
+ *     this lock must be acquired when all threads are initially spooled up
+ * 
+ *     THIS:
+ *         this remains unlocked unless we have just marked the only spooled down
+ *         thread as available
+*/
+
+    while(1){
+        /* this will not be free until a routine is done executing in await_instructions() */
+        pthread_mutex_lock(&p->rt->spool_down_lock);
+        
+        /* we first acquire the tll lock to ensure that we're ok to alter our thread lists */
+        pthread_mutex_lock(&p->tll_lock);
+
+        int n_avail = 0;
+        for(struct thread_node* n = p->in_use->first; n; n = n->next){
+            if(!n->thread_info->f_a->spool_up){
+                ++n_avail;
+                struct thread_node* new_avail = remove_node(p->in_use, n);
+                new_avail->next = new_avail->prev = NULL;
+                prepend_tll(p->available, new_avail);
+                #if DEBUG
+                printf("thread %i has been made available\n", new_avail->thread_info->f_a->_id);
+                #endif
+            }
+        }
+
+        pthread_mutex_unlock(&p->tll_lock);
+
+        printf("we found %i available\n", n_avail);
+        /*
+         * if(n_avail > 1)pthread_mutex_unlock(&p->rt->spool_down_lock);
+         * else puts("keeping spool locked");
+        */
+    }
+
+    return NULL;
 }
 
 void* spooler(void* v_thread_pool){
@@ -334,6 +377,15 @@ void* await_instructions(void* v_f_a){
     while(!f_a->exit){
         while(!f_a->spool_up){
             if(f_a->exit)return NULL;
+            /* instead of using DELAY here, we can give each struct thread* created in
+             * spawn_thread() its own mutex lock
+             * they are all locked initially, but are unlocked each time a routine begins
+             *
+             * it's the duty of the one setting the arguments of the thread* to unlock the
+             * run_lock once they've been set
+             *
+             * the await_instructions() thread will then begin execution
+             */
             DELAY;
         }
         f_a->func(f_a->arg);
@@ -343,9 +395,10 @@ void* await_instructions(void* v_f_a){
          * possibly unlock a lock that lets the scheduler know
          * a new thread is done running
         */
-        pthread_mutex_unlock(&f_a->rt->spool_down_lock);
         
         pthread_mutex_lock(&f_a->rt->lock);
+
+        pthread_mutex_unlock(&f_a->rt->spool_down_lock);
         /*++f_a->rt->n_finished;*/
         /*printf("n_fin: %i\n", f_a->rt->n_finished+1);*/
         if(++f_a->rt->n_finished == f_a->rt->target){
@@ -435,6 +488,13 @@ void init_pool(struct thread_pool* p, int n_threads){
     pthread_mutex_init(&p->rt->spool_down_lock, NULL);
     /* acquiring ready_lock */
     /*pthread_mutex_lock(&p->rt->ready_lock);*/
+
+    /* this lock begins acquired because all threads are initially 
+     * available and none are ready to be moved anywhere
+     * the spool_down_lock only indicates that a thread has just
+     * finished running a routine
+     */
+    pthread_mutex_lock(&p->rt->spool_down_lock);
 
     begin_thread_mgmt(p);
 }
