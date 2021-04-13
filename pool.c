@@ -278,7 +278,7 @@ void* scheduler(void* v_thread_pool){
         pthread_mutex_lock(&p->tll_lock);
 
         int n_avail = 0;
-        for(struct thread_node* n = p->in_use->first; n; n = n->next){
+        /*for(struct thread_node* n = p->in_use->first; n; n = n->next){*/
 
         /*
          * something in here is making n->next == NULL
@@ -286,16 +286,21 @@ void* scheduler(void* v_thread_pool){
          *     figure out this n->next == NULL nonce
          *     git checkout to before i updated pthread logic
         */
+        struct thread_node* n = p->in_use->first;
+        while(n){
 
             if(!n->thread_info->f_a->spool_up){
                 ++n_avail;
+                struct thread_node* tmp = n->next;
                 struct thread_node* new_avail = remove_node(p->in_use, n);
+                n = tmp;
                 new_avail->next = new_avail->prev = NULL;
                 prepend_tll(p->available, new_avail);
                 #if DEBUG
                 printf("thread %i has been made available\n", new_avail->thread_info->f_a->_id);
                 #endif
             }
+            else n = n->next;
         }
 
         pthread_mutex_unlock(&p->tll_lock);
